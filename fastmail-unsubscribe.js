@@ -211,11 +211,9 @@ const SELECTORS = {
   mailboxItem: '.v-MailboxItem'
 };
 
-// Debug logging with timestamps
+// Debug logging
 function log(message) {
-  const now = new Date();
-  const timestamp = now.toISOString();
-  console.log(`Fastmail Unsubscribe [${timestamp}]: ${message}`);
+  console.debug(`Fastmail Unsubscribe: ${message}`);
 }
 
 // State tracking to prevent duplicate processing
