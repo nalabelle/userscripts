@@ -3,7 +3,7 @@
   "packages": [
     "shellcheck@0.10.0",
     "pre-commit@4.2.0",
-    "nodejs_24@24.1.0"
+    "nodejs_24@24.3.0"
   ],
   "env": {"DEVBOX_COREPACK_ENABLED": "", "PATH": "$PWD/node_modules/.bin:$PATH"}
 }
