@@ -4,13 +4,13 @@
 // @description Refined unsubscribe with header hiding and button alignment
 // @include     https://*.fastmail.com/*
 // @include     https://fastmail.com/*
-// @version     16
+// @version     17
 // @grant       GM_addStyle
 // ==/UserScript==
 
 /* istanbul ignore if */
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { decodeEncodedWord, parseUnsubscribeLinks };
+  module.exports = { parseUnsubscribeLinks, decodeQuotedPrintable };
 }
 
 GM_addStyle(`
@@ -65,43 +65,32 @@ GM_addStyle(`
   }
 `);
 
-function decodeEncodedWord(str) {
-  try {
-    // Join split encoded-words and extract the encoded content
-    const joinedParts = str.replace(/\s*=\?([^?]+)\?Q\?(.*?)\?=\s*/gi, (match, charset, encoded) => {
-      if (!encoded) {
-        console.warn('Fastmail Unsubscribe: Malformed encoded-word:', match);
-        return '';
-      }
-      return encoded;
-    });
+function decodeQuotedPrintable(str) {
+    str = str.replace(/\s/g, '');
 
-    // Decode Q-encoding
-    const decodedStr = joinedParts.replace(/=([0-9A-F]{2})|_/gi, (match, p1) => {
-      if (match === '_') return ' ';  // Q-encoding uses _ for spaces
-      if (p1) {
-        try {
-          return String.fromCharCode(parseInt(p1, 16));
-        } catch (e) {
-          console.warn('Fastmail Unsubscribe: Invalid hex code:', p1);
-          return match;
+    // Handle both Q and B encodings
+    const encodedPattern = /=\?([^?]+)\?([QB])\?([^?]*)\?=/gi;
+
+    return str.replace(encodedPattern, (_match, _charset, encoding, encodedText) => {
+        if (encoding.toUpperCase() === 'Q') {
+            // Q-encoding (Quoted-Printable)
+            return encodedText
+                .replace(/_/g, ' ')  // Q encoding uses _ for spaces
+                .replace(/=([0-9A-F]{2})/gi, (_hexMatch, hex) => {
+                    return String.fromCharCode(parseInt(hex, 16));
+                });
+        } else if (encoding.toUpperCase() === 'B') {
+            // B-encoding (Base64)
+            try {
+                return atob(encodedText);
+            } catch (e) {
+                return encodedText; // Return original if decode fails
+            }
         }
-      }
-      return match;
-    });
-
-    // Decode percent encoding
-    try {
-      return decodeURIComponent(decodedStr);
-    } catch (e) {
-      console.warn('Fastmail Unsubscribe: Failed to decode URI component:', e.message);
-      return decodedStr;
-    }
-  } catch (e) {
-    console.warn('Fastmail Unsubscribe: Decoder error:', e.message);
-    return str;  // Return original string if decoding fails
-  }
+        return encodedText;
+    }).trim();
 }
+
 
 function parseUnsubscribeLinks() {
   const detailsSection = document.querySelector('.v-Message-details');
@@ -121,7 +110,7 @@ function parseUnsubscribeLinks() {
 
   // Check if header is MIME encoded
   if (headerText.startsWith('=?')) {
-    headerText = decodeEncodedWord(headerText);
+    headerText = decodeQuotedPrintable(headerText);
   }
   const links = [];
   // Clean up whitespace and line breaks in the header text

@@ -5,15 +5,15 @@ import { JSDOM } from 'jsdom';
 global.GM_addStyle = vi.fn();
 
 // Now import the functions
-const { decodeEncodedWord, parseUnsubscribeLinks } = await import('./fastmail-unsubscribe.js');
+const { parseUnsubscribeLinks, decodeQuotedPrintable } = await import('./fastmail-unsubscribe.js');
 
 describe('Fastmail Unsubscribe Header Tests', () => {
-  describe('decodeEncodedWord', () => {
+  describe('decodeQuotedPrintable', () => {
     const testCases = [
       {
         name: 'handles complex encoded header with split parts',
         input: '=?us-ascii?Q?=3Chttps=3A=2F=2F03=2Eemailinboundprocessing=2Ecom=2Fenc=5Fuser=2Flist=5Funsubscri?= =?us-ascii?Q?be=3Fd=3D%241%24kYdlZ%2FMtZKhQo1fCiaeJUA%3D=3E?=',
-        expected: '<https://03.emailinboundprocessing.com/enc_user/list_unsubscribe?d=$1$kYdlZ/MtZKhQo1fCiaeJUA=>'
+        expected: '<https://03.emailinboundprocessing.com/enc_user/list_unsubscribe?d=%241%24kYdlZ%2FMtZKhQo1fCiaeJUA%3D>'
       },
       {
         name: 'handles multiple URLs in encoded header',
@@ -34,24 +34,7 @@ describe('Fastmail Unsubscribe Header Tests', () => {
 
     testCases.forEach(({ name, input, expected }) => {
       test(name, () => {
-        expect(decodeEncodedWord(input)).toBe(expected);
-      });
-    });
-
-    describe('error handling', () => {
-      test('handles malformed encoded words', () => {
-        const malformed = '=?utf-8?Q?incomplete encoded word';
-        expect(decodeEncodedWord(malformed)).toBe(malformed);
-      });
-
-      test('handles invalid hex codes', () => {
-        const invalid = '=?utf-8?Q?=XX?=';
-        expect(decodeEncodedWord(invalid)).toBe('=XX');
-      });
-
-      test('handles empty encoded words', () => {
-        const empty = '=?utf-8?Q??=';
-        expect(decodeEncodedWord(empty)).toBe('');
+        expect(decodeQuotedPrintable(input)).toBe(expected);
       });
     });
   });
@@ -118,6 +101,54 @@ describe('Fastmail Unsubscribe Header Tests', () => {
         const result = parseUnsubscribeLinks();
         expect(result.links).toEqual([]);
       });
+    });
+
+    describe('complex URL parameter handling', () => {
+      test('preserves complex encoded d parameter', () => {
+        const header = '=?utf-8?Q?=3Chttps=3A=2F=2Fexample=2Ecom=2Funsubscribe=3Fd=3D=241=24Rk9x=2BJ%2FMt5Kh=2B?= =?utf-8?Q?Qo1fC%2FaeJ%252BUA=253D=3E?=';
+        createTestDOM(header);
+
+        const result = parseUnsubscribeLinks();
+        expect(result.links).toEqual([
+          { type: 'http', url: 'https://example.com/unsubscribe?d=$1$Rk9x+J%2FMt5Kh+Qo1fC%2FaeJ%252BUA%3D' }
+        ]);
+      });
+
+      test('handles URL-encoded special characters in d parameter', () => {
+        const header = '=?utf-8?Q?=3Chttps=3A=2F=2Fexample=2Ecom=2Funsubscribe=3Fd=3DaHR0cHM6Ly9l?= =?utf-8?Q?eGFtcGxlLmNvbS91bnN1YnNjcmliZT9pZD0xMjM=253D=3E?=';
+        createTestDOM(header);
+
+        const result = parseUnsubscribeLinks();
+        expect(result.links).toEqual([
+          { type: 'http', url: 'https://example.com/unsubscribe?d=aHR0cHM6Ly9leGFtcGxlLmNvbS91bnN1YnNjcmliZT9pZD0xMjM%3D' }
+        ]);
+      });
+
+      test('handles multiline encoded d parameter', () => {
+        const header = '=?utf-8?Q?=3Chttps=3A=2F=2Fexample=2Ecom=2Funsubscribe=3Fd=3D?= =?utf-8?Q?VGhpc0lzQUxvbmdFbmNvZGVk?= =?utf-8?Q?VmFsdWVXaXRoTXVsdGlwbGVMaW5lcw=3D=3D=3E?=';
+        createTestDOM(header);
+
+        const result = parseUnsubscribeLinks();
+        expect(result.links).toEqual([
+          { type: 'http', url: 'https://example.com/unsubscribe?d=VGhpc0lzQUxvbmdFbmNvZGVkVmFsdWVXaXRoTXVsdGlwbGVMaW5lcw==' }
+        ]);
+      });
+    });
+  });
+
+  describe('Test Quoted Printable', () => {
+    test('Specific instance', () => {
+      const input = `=?us-ascii?Q?=3Chttps=3A=2F=2Ftest=2Eexample=2Ecom=2Fapi=2Fuser=2Flist=5Funsubscri?=`
+        + `=?us-ascii?Q?be=3Fd=3D%24TEST%24FakeHashData123%2BAbcDef%3D%3D?=`
+        + `=?us-ascii?Q?%3D%24MockToken456%2BMoreFakeData%2FExample%2FHere?=`
+        + `=?us-ascii?Q?SampleEncodedContent%2BTestData%3D%3D%0ANext?=`
+        + `=?us-ascii?Q?LineOfFakeContent%2BMoreTest%2FData%2FValues%0A?=`
+        + `=?us-ascii?Q?FinalPartOfTestData%2BEndContent%3D%3D&test=3D1=3E=2C=3Cmailto?=`
+        + `=?us-ascii?Q?=3Atest=5Femail=40example=2Ecom=3Fsubject=3DTest?=`
+        + `=?us-ascii?Q?%20Subject&body=3DTEST=5FCONTENT=3E?=`;
+
+    const expected = '<https://test.example.com/api/user/list_unsubscribe?d=%24TEST%24FakeHashData123%2BAbcDef%3D%3D%3D%24MockToken456%2BMoreFakeData%2FExample%2FHereSampleEncodedContent%2BTestData%3D%3D%0ANextLineOfFakeContent%2BMoreTest%2FData%2FValues%0AFinalPartOfTestData%2BEndContent%3D%3D&test=1>,<mailto:test_email@example.com?subject=Test%20Subject&body=TEST_CONTENT>';
+      expect(decodeQuotedPrintable(input)).toBe(expected);
     });
   });
 });
