@@ -6,7 +6,7 @@
     "test": "vitest --run"
   },
   "devDependencies": {
-    "vitest": "3.2.4",
+    "vitest": "4.0.18",
     "jsdom": "26.1.0"
   }
 }
